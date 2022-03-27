@@ -13,16 +13,16 @@
 
 `$ cd webshell_php5_demo`
 
-##### 建立專案：
+##### 建立並啟動專案：
 
 -   `$ make build` (需要時加上 sudo)
-
-##### 啟動專案：
-
--   `$ make up` (需要時加上 sudo)
+    - 詳細指令可以參考`Makefile`的內容
 
 ##### 完成！
 - 開啟瀏覽器，前往`http://localhost:8088/`，看到以下畫面表示PHP環境建置成功
     - ![](https://i.imgur.com/RaPSwCi.png)
 - 開啟瀏覽器，前往`http://localhost:8088/b374k.php`即可開始體驗可怕的webshell（根目錄是這個專案的 `public/`）
     - ![](https://i.imgur.com/WPp7nNq.png)
+
+##### 停止專案：
+- `$ make down` (需要時加上 sudo)

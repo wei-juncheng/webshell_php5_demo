@@ -1,11 +1,11 @@
 build:
-	docker-compose --env-file .docker-compose.env up -d --build app nginx
+	docker-compose up -d --build app nginx
 
 up:
-	docker-compose --env-file .docker-compose.env up -d app nginx
+	docker-compose up -d app nginx
 
 down:
-	docker-compose --env-file .docker-compose.env down
+	docker-compose down
 
 restart:
 	@$(MAKE) -s down
