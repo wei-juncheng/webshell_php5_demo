@@ -1,0 +1,34 @@
+version: '3.7'
+services:
+  app:
+    image: php:5-fpm
+    container_name: castle-app
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Taipei
+    working_dir: /var/www/
+    volumes:
+      - ./:/var/www
+    networks:
+      - castle-network
+
+  # Nginx for develop env (running on Desktop)
+  nginx:
+    image: nginx:1.21.1-alpine
+    container_name: castle-nginx
+    restart: unless-stopped
+    ports:
+      - '8088:8080'
+    volumes:
+      - ./:/var/www:ro
+      - ./docker-compose/nginx/${ENV_TYPE:-develop}:/etc/nginx/conf.d:ro
+      - ./docker-compose/nginx/nginx_log:/var/log/nginx
+    environment:
+      - TZ=Asia/Taipei
+    networks:
+      - castle-network
+    depends_on:
+      - app
+networks:
+  castle-network:
+    driver: bridge
