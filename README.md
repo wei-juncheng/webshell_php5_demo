@@ -9,7 +9,7 @@
 
 #### Clone 專案
 
-`$ git clone git@github.com:wei-juncheng/webshell_php5_demo.git`
+`$ git clone https://github.com/wei-juncheng/webshell_php5_demo.git`
 
 `$ cd webshell_php5_demo`
 
