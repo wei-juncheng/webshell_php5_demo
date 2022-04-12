@@ -9,6 +9,7 @@ services:
     working_dir: /var/www/
     volumes:
       - ./:/var/www
+      - ${PWD}/docker-compose/php-fpm/www.conf:/usr/local/etc/php-fpm.d/www.conf
     networks:
       - castle-network
 
