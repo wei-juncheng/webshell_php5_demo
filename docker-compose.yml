@@ -29,6 +29,25 @@ services:
       - castle-network
     depends_on:
       - app
+  
+  falco_python:
+    build:
+      context: ./docker-compose/falco_python
+      dockerfile: Dockerfile.falco_python
+    container_name: falco_python
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Taipei
+    working_dir: /app/
+    # ports:
+    #   - '5000:5000'
+    volumes:
+      - ./docker-compose/falco_python:/app
+    networks:
+      - castle-network
+    depends_on:
+      - nginx
+      - app
 networks:
   castle-network:
     driver: bridge
