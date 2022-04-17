@@ -149,3 +149,9 @@ resources/views/scribe/
 
 # nginx log
 docker-compose/nginx/nginx_log/*.log
+
+#ignore php-fpm's log
+docker-compose/php-fpm/php-fpm.access.log
+
+#ignore falco's log
+docker-compose/falco_python/falco.log
