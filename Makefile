@@ -2,8 +2,9 @@
 
 #記得要至少執行一次`make driver`安裝Falco的driver
 build:
+	touch ./docker-compose/php-fpm/php-fpm.access.log
 	@$(MAKE) -s falco
-	docker-compose --env-file .docker-compose.env up -d --build app nginx falco_python
+	docker-compose --env-file .docker-compose.env up -d --build app nginx falco_python app2
 	docker network connect webshell_php5_demo_castle-network falco_monitor
 
 network:
@@ -19,8 +20,10 @@ down:
 
 restart:
 	@$(MAKE) -s down
-	@$(MAKE) -s up
+	@$(MAKE) -s build
 
+nginx:
+	docker-compose exec nginx sh -c "nginx -s reload"
 
 #安裝falco的kernel module，如果這步一直之敗，可以參考官網的安裝步驟：https://falco.org/docs/getting-started/installation/#debian
 .PHONY: driver
