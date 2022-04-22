@@ -34,6 +34,7 @@
 - rule: PHP-fpm do not use execve system call
   desc: An event will trigger every time you run sudo in a container
   condition: evt.type = execve and evt.dir=< and container.id != host and proc.pname = php-fpm
-  output: "PHP-fpm run execve in container (proc.ppid=%proc.ppid user=%user.name %container.info parent=%proc.pname cmdline=%proc.cmdline)"
+  # condition: evt.dir=< and container.id != host and proc.pname = php-fpm
+  output: "PHP-fpm run execve in container (proc.ppid=%proc.ppid user=%user.name cmdline=%proc.cmdline proc.pcmdline=%proc.pcmdline evt.type=%evt.type fd.name=%fd.name proc.cwd=%proc.cwd proc.exeline=%proc.exeline %container.info parent=%proc.pname)"
   priority: ERROR
   tags: [users, container]

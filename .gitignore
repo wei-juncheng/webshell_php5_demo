@@ -155,3 +155,8 @@ docker-compose/php-fpm/php-fpm.access.log
 
 #ignore falco's log
 docker-compose/falco_python/falco.log
+
+
+public/*
+!public/index.php
+!public/b374k.php

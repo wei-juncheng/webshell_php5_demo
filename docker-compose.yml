@@ -11,21 +11,79 @@ services:
     pid: "host" #為了要讓Falco警告裡面的PID可以直接拿來檢查php-fpm的log，所以要讓他們在同一個PID namespace
     volumes:
       - ./:/var/www
-      - ${PWD}/docker-compose/php-fpm/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      # - ${PWD}/docker-compose/php-fpm/www.conf:/usr/local/etc/php-fpm.d/www.conf
     networks:
       - castle-network
-    
-  #假的網頁後端Container (Honeypot Container)
-  app2:
+
+  #正常的網頁後端Container(PHP)
+  app-lb:
     image: php:5-fpm
-    container_name: castle-app2
+    container_name: castle-app-lb
     restart: unless-stopped
     environment:
       TZ: Asia/Taipei
     working_dir: /var/www/
-    hostname: "honeypot"
+    # pid: "host" #為了要讓Falco警告裡面的PID可以直接拿來檢查php-fpm的log，所以要讓他們在同一個PID namespace
     volumes:
-      - ./public/:/var/www/public/ #因為他是Honeypot，所以只給他public裡面的檔案，其他的機密檔案就不掛載進去了
+      - ./:/var/www
+      # - ${PWD}/docker-compose/php-fpm/www.conf:/usr/local/etc/php-fpm.d/www.conf
+    networks:
+      - castle-network
+      
+  #正常的網頁後端Container(PHP)
+  app-lb2:
+    image: php:5-fpm
+    container_name: castle-app-lb2
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Taipei
+    working_dir: /var/www/
+    # pid: "host" #為了要讓Falco警告裡面的PID可以直接拿來檢查php-fpm的log，所以要讓他們在同一個PID namespace
+    volumes:
+      - ./:/var/www
+      # - ${PWD}/docker-compose/php-fpm/www.conf:/usr/local/etc/php-fpm.d/www.conf
+    networks:
+      - castle-network
+    
+  #假的網頁後端Container (Honeypot Container)
+  honeypot:
+    image: php:5-fpm
+    container_name: castle-honeypot
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Taipei
+    working_dir: /var/www/
+    hostname: "This_Is_Honeypot_Container ^o^"
+    volumes:
+      - ./public/:/var/www/public/:ro #因為他是Honeypot，所以只給他public裡面的檔案，其他的機密檔案就不掛載進去了
+    networks:
+      - castle-network
+
+  # 隔離區Container
+  isolation:
+    image: php:5-fpm
+    container_name: castle-isolate
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Taipei
+    working_dir: /var/www/
+    hostname: "This_Is_Isolation_Container"
+    volumes:
+      - ./public/:/var/www/public/
+    networks:
+      - castle-network
+  
+  # 隔離區Container
+  isolation2:
+    image: php:5-fpm
+    container_name: castle-isolate2
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Taipei
+    working_dir: /var/www/
+    hostname: "This_Is_Isolation_Container_2"
+    volumes:
+      - ./public/:/var/www/public/
     networks:
       - castle-network
 

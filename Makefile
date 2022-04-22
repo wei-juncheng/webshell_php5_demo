@@ -4,7 +4,7 @@
 build:
 	touch ./docker-compose/php-fpm/php-fpm.access.log
 	@$(MAKE) -s falco
-	docker-compose --env-file .docker-compose.env up -d --build app nginx falco_python app2
+	docker-compose --env-file .docker-compose.env up -d --build app nginx falco_python honeypot app-lb app-lb2 isolation isolation2
 	docker network connect webshell_php5_demo_castle-network falco_monitor
 
 network:
@@ -36,6 +36,7 @@ driver:
 #  - 傳送http訊息的設定在falco.yaml檔案底下裡面的`http_output`段落
 .PHONY: falco
 falco:
+	docker rm -f falco_monitor
 	docker run -d --name falco_monitor -e HOST_ROOT=/ --cap-add SYS_PTRACE --pid=host $(shell ls /dev/falco* | xargs -I {} echo --device {}) -v /var/run/docker.sock:/var/run/docker.sock -v $(shell pwd | xargs -I {} echo {}/docker-compose/falco/falco_mount):/etc/falco falcosecurity/falco-no-driver:0.31.1
 
 
