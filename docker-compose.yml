@@ -86,10 +86,24 @@ services:
       - ./public/:/var/www/public/
     networks:
       - castle-network
+  
+  # 隔離區Container
+  isolation3:
+    image: php:5-fpm
+    container_name: castle-isolate3
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Taipei
+    working_dir: /var/www/
+    hostname: "This_Is_Isolation_Container_3"
+    volumes:
+      - ./public/:/var/www/public/
+    networks:
+      - castle-network
 
   # Nginx web server
   nginx:
-    image: nginx:1.21.1-alpine
+    image: nginx:1.21.6-alpine
     container_name: castle-nginx
     restart: unless-stopped
     ports:
@@ -121,10 +135,13 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock #因為要在Container裡面使用Python的Docker套件，所以需要Docker Engine API掛載進去
     networks:
       - castle-network
+    ports:
+      - '8089:5000'
     depends_on:
       - nginx
       - app
-      - app2
+      - honeypot
+      - isolation
 networks:
   castle-network:
     driver: bridge
