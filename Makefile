@@ -4,7 +4,7 @@
 build:
 	touch ./docker-compose/php-fpm/php-fpm.access.log
 	@$(MAKE) -s falco
-	docker-compose --env-file .docker-compose.env up -d --build app nginx falco_python honeypot app-lb app-lb2 isolation isolation2
+	docker-compose --env-file .docker-compose.env up -d --build app nginx falco_python honeypot app-lb app-lb2 isolation isolation2 isolation3
 	docker network connect webshell_php5_demo_castle-network falco_monitor
 
 network:
@@ -19,11 +19,18 @@ down:
 	docker-compose --env-file .docker-compose.env down
 
 restart:
+	@$(MAKE) -s clear
 	@$(MAKE) -s down
 	@$(MAKE) -s build
 
+.PHONY: nginx
 nginx:
 	docker-compose exec nginx sh -c "nginx -s reload"
+
+.PHONY: clear
+clear:
+	cp docker-compose/nginx/webshell_nginx_develop_backup.conf docker-compose/nginx/develop/webshell_nginx_develop.conf
+	@$(MAKE) -s nginx
 
 #安裝falco的kernel module，如果這步一直之敗，可以參考官網的安裝步驟：https://falco.org/docs/getting-started/installation/#debian
 .PHONY: driver
