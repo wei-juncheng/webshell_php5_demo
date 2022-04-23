@@ -8,6 +8,12 @@ import re
 app = Flask(__name__)
 docker_client = docker.from_env()
 
+upstream_response_time_regex = re.compile(r'\supstream_response_time=([0-9]+\.[0-9]{3})\s')
+msec_regex = re.compile(r'\smsec=([0-9]{10}\.[0-9]{3})\s')
+source_ip_regex = re.compile(r'\sremote_addr=((?:[0-9]{1,3}\.){1,3}[0-9]{1,3})\s')
+upstream_ip_regex = re.compile(r'\supstream_addr=((?:[0-9]{1,3}\.){1,3}[0-9]{1,3})[: 0-9]{0,6}\s')
+
+
 #TODO: Nginx有時候會不寫log
 
 
@@ -81,10 +87,6 @@ def search_from_nginx_log(falco_process_id, falco_time_stp, falco_container_ip):
     honeypot_ip = get_container_ip('castle-app2')
 
     real_ip_list = []
-    upstream_response_time_regex = re.compile(r'\supstream_response_time=([0-9]+\.[0-9]{3})\s')
-    msec_regex = re.compile(r'\smsec=([0-9]{10}\.[0-9]{3})\s')
-    source_ip_regex = re.compile(r'\sremote_addr=((?:[0-9]{1,3}\.){1,3}[0-9]{1,3})\s')
-    upstream_ip_regex = re.compile(r'\supstream_addr=((?:[0-9]{1,3}\.){1,3}[0-9]{1,3})[: 0-9]{0,6}\s')
 
     # 提早結束條件：30秒以前的Nginx log直接忽略、超過現在時間的Nginx log之後都忽略不看（直接break）
     from_time_condition = datetime.now() - timedelta(seconds=30)
