@@ -35,6 +35,9 @@ def index():
         fp.close()
         app.logger.info(json.dumps(data))
 
+        if any(key not in data for key in ['output', 'tags']) or any(key not in data['tags'] for key in ['container']):
+            return 'ignore'
+
         #如果是honeypotcontainer觸發的事件就不要管他
         if str(data['output_fields']['container.name']) in ['castle-honeypot']:
             # app.logger.info(str(data['output_fields']['container.name']))
