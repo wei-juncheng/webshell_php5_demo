@@ -44,19 +44,20 @@ def index():
             app.logger.info('Event happened in honeypot application container, ignore it.')
             return 'resolve'
 
-        #解析Falco傳過來的資訊（process PID, 時間戳記）
+        #解析Falco傳過來的資訊（process PID, 時間戳記, 出問題的container IP）
         falco_process_id = str(data['output_fields']['proc.ppid'])
         falco_time_stp = datetime.fromisoformat(str(data['time'][:26])) + timedelta(hours=8) #改成UTC+8
         falco_container_ip = get_container_ip(str(data['output_fields']['container.name']))
 
-        abnormal_ip = search_from_nginx_log(falco_process_id, falco_time_stp, falco_container_ip)
-        app.logger.info(abnormal_ip)
+        attacker_ip_list = search_from_nginx_log(falco_process_id, falco_time_stp, falco_container_ip)
+        app.logger.info("attacker_ip_list: "+str(attacker_ip_list))
 
-        if abnormal_ip:
-            #寫入Nginx設定檔，並且reload Nginx設定，讓惡意IP的流量被分流
-            insert_ip(abnormal_ip, 'honeypot')
-            reload_nginx()
-            return 'Hello POST'
+        if len(attacker_ip_list)>1:
+            multiple_abnormal_IP(attacker_ip_list)
+        elif len(attacker_ip_list)==1:
+            single_attacker_IP(attacker_ip_list)
+        else:
+            app.logger.info("Activity not found in log file")
 
     return "Hello"
 
@@ -68,6 +69,72 @@ def fast_search_position_in_file(fd, target_string):
         return -1
     return regex_result.start()
 
+def ip_in_isolate_list(ip_addr):
+    global isolate_ip_set
+    return (str(ip_addr)+"/32") in isolate_ip_set
+
+
+def single_attacker_IP(attacker_ip_list):
+    global isolate_ip_set
+
+    attacker_IP = attacker_ip_list[0]
+
+    # 抓到的這個IP是隔離中的IP
+    if ip_in_isolate_list(attacker_IP):
+        #如果發現的唯一一個IP是先前有被隔離的，那就 1.把他導向honeypot，並且2. 其餘隔離IP就解除隔離
+
+        # 全部IP解除隔離
+        for ip_addr in list(isolate_ip_set):
+            ip_addr = ip_addr.replace("/32","")
+            remove_ip_from_isolate(ip_addr)
+
+    add_ip_to_honeypot(attacker_IP)
+    reload_nginx()
+
+    
+
+def add_ip_to_honeypot(ip_addr):
+    global honeypot_ip_set
+    insert_ip(str(ip_addr)+'/32', 'honeypot')
+    honeypot_ip_set.add(str(ip_addr)+"/32")
+    app.logger.info("新增Honeypot: "+str(ip_addr))
+
+
+def add_ip_to_isolate(ip_addr):
+    global isolate_ip_set
+    insert_ip(str(ip_addr)+'/32', 'isolate') # 將他加進隔離區
+    isolate_ip_set.add(str(ip_addr)+'/32') # 將他加進隔離名單
+    app.logger.info("新增隔離: "+str(ip_addr))
+
+def remove_ip_from_isolate(ip_addr):
+    global isolate_ip_set
+    edit_ip(str(ip_addr)+'/32', 'app_lb') # 將他解除隔離
+    isolate_ip_set.remove(str(ip_addr)+'/32') # 從隔離名單中移除
+    app.logger.info("解除隔離: "+str(ip_addr))
+
+def multiple_abnormal_IP(abnormal_IP_list):
+    global isolate_ip_set
+
+    if len(abnormal_IP_list) > 1: #如果同時發現2個（或以上）的IP。分兩種情況：1. 兩個都是普通IP; 2. 兩個都是被隔離的IP
+        app.logger.info("find more than 1 IP in log: " + str(abnormal_IP_list))
+    
+        #解除其他隔離IP，並讓原本沒有被隔離的IP加入隔離區
+
+        # 在隔離名單，但不在重疊名單的IP。將他解除隔離
+        for element in list( isolate_ip_set - set(abnormal_IP_list) ):
+            element = element.replace("/32","")
+            remove_ip_from_isolate(element)
+
+        # 在重疊名單，但不在隔離名單。將他加進隔離區
+        for element in list(set(abnormal_IP_list) - isolate_ip_set):
+            element = element.replace("/32","")
+            add_ip_to_isolate(element)
+        reload_nginx() #這邊reload也可以把重新分配IP hash的load balance規則，避免下次相同的IP又撞在一起
+    else:
+        app.logger.info('abnormal_IP_list has less than 2 IP')
+
+
+# 從Nginx log裡面找出攻擊者的IP
 def search_from_nginx_log(falco_process_id, falco_time_stp, falco_container_ip):
     global isolate_event_id, isolate_ip_set
     nginx_log_fd = open('/nginx/nginx_log/access.log',"r")
@@ -118,51 +185,7 @@ def search_from_nginx_log(falco_process_id, falco_time_stp, falco_container_ip):
 
     app.logger.info(real_ip_list)
 
-    if len(real_ip_list) == 1 and ((str(real_ip_list[0])+"/32") in isolate_ip_set):
-        #如果發現的唯一一個IP是先前有被隔離的，那就 1.把他導向honeypot，並且2. 其餘同一梯次的隔離夥伴就解除隔離
-
-
-        # 其餘IP解除隔離
-        temp_ip_set = set()
-        temp_ip_set.add(real_ip_list[0]+"/32")
-        isolated_ip_difference_list = list(isolate_ip_set - temp_ip_set )
-
-        for ip_addr in isolated_ip_difference_list:
-            edit_ip(str(ip_addr), 'app_lb')
-            isolate_ip_set.remove(ip_addr)
-            app.logger.info('解除隔離：'+str(ip_addr))
-
-        #把他導向honeypot，並從隔離名單中刪除
-        edit_ip(str(real_ip_list[0])+'/32', 'honeypot')
-        isolate_ip_set.remove(str(real_ip_list[0])+"/32")
-        honeypot_ip_set.add(str(real_ip_list[0])+"/32")
-        
-        reload_nginx()
-        return False
-
-    elif len(real_ip_list) > 1: #如果同時發現2個（或以上）的IP。分兩種情況：1. 兩個都是普通IP; 2. 兩個都是被隔離的IP
-        app.logger.info("find more than 1 IP in log: " + str(real_ip_list))
-        real_ip_list = [i+"/32" for i in real_ip_list]
-    
-        #解除其他隔離IP，並讓原本沒有被隔離的IP加入隔離區
-
-        # 在隔離名單，但不在重疊名單的IP。將他解除隔離
-        for element in list( isolate_ip_set - set(real_ip_list) ):
-            edit_ip(str(element), 'app_lb')
-            isolate_ip_set.remove(str(element))
-
-        # 在重疊名單，但不在隔離名單。將他加進隔離區
-        for element in list(set(real_ip_list) - isolate_ip_set):
-            insert_ip(str(element), 'isolate')
-            isolate_ip_set.add(str(element))
-            app.logger.info("新增隔離: "+str(element))
-        reload_nginx() #這邊reload也可以把重新分配IP hash的load balance規則，避免下次相同的IP又壯再一起
-        return False
-    elif len(real_ip_list) < 1: #沒有在log中找到這筆記錄，代表這個request已經被導向另一個Honeypot Container了
-        app.logger.info("Activity not found in log file")
-        return False
-
-    return real_ip_list[0]
+    return real_ip_list
 
 def parse_nginx_conf():
     global NGINX_CONF_PATH
