@@ -115,6 +115,8 @@ def remove_ip_from_isolate(ip_addr):
 def multiple_abnormal_IP(abnormal_IP_list):
     global isolate_ip_set
 
+    abnormal_IP_list = [i+"/32" for i in abnormal_IP_list]
+
     if len(abnormal_IP_list) > 1: #如果同時發現2個（或以上）的IP。分兩種情況：1. 兩個都是普通IP; 2. 兩個都是被隔離的IP
         app.logger.info("find more than 1 IP in log: " + str(abnormal_IP_list))
     
