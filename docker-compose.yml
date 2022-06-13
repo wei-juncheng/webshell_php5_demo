@@ -11,7 +11,7 @@ services:
     pid: "host" #為了要讓Falco警告裡面的PID可以直接拿來檢查php-fpm的log，所以要讓他們在同一個PID namespace
     volumes:
       - ./:/var/www
-      - ${PWD}/docker-compose/php-fpm/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      - ./docker-compose/php-fpm/www.conf:/usr/local/etc/php-fpm.d/www.conf
     networks:
       - castle-network
 
@@ -26,7 +26,7 @@ services:
     # pid: "host" #為了要讓Falco警告裡面的PID可以直接拿來檢查php-fpm的log，所以要讓他們在同一個PID namespace
     volumes:
       - ./:/var/www
-      - ${PWD}/docker-compose/php-fpm/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      - ./docker-compose/php-fpm/www.conf:/usr/local/etc/php-fpm.d/www.conf
     networks:
       - castle-network
       
@@ -41,14 +41,14 @@ services:
     # pid: "host" #為了要讓Falco警告裡面的PID可以直接拿來檢查php-fpm的log，所以要讓他們在同一個PID namespace
     volumes:
       - ./:/var/www
-      - ${PWD}/docker-compose/php-fpm/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      - ./docker-compose/php-fpm/www.conf:/usr/local/etc/php-fpm.d/www.conf
     networks:
       - castle-network
     
   #假的網頁後端Container (Honeypot Container)
   honeypot:
     image: php:5-fpm
-    container_name: castle-honeypot
+    #container_name: castle-honeypot
     restart: unless-stopped
     environment:
       TZ: Asia/Taipei

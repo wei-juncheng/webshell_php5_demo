@@ -15,15 +15,23 @@ msec_regex = re.compile(r'\smsec=([0-9]{10}\.[0-9]{3})\s')
 source_ip_regex = re.compile(r'\sremote_addr=((?:[0-9]{1,3}\.){1,3}[0-9]{1,3})\s')
 upstream_ip_regex = re.compile(r'\supstream_addr=((?:[0-9]{1,3}\.){1,3}[0-9]{1,3})[: 0-9]{0,6}\s')
 
+# nien-yun
+honeypot_container_regex = re.compile(r'\webshell_php5_demo_honeypot_(\d{1,4})')
+
 
 #TODO: Nginx有時候會不寫log
 
 
 isolate_ip_set = set()
-honeypot_ip_set = set()
+honeypot_ip_set = set()     #儲存honeypot的IP的CIDR表示法(例如: '192.168.88.222/32')
+
+#global active?
+ACTIVE_DYMANIC_HONEYPOT = False
 
 @app.route('/', methods=['GET', 'POST']) 
 def index():
+    global ACTIVE_DYMANIC_HONEYPOT
+
     if request.method == 'POST': 
         data = request.get_json()
         # 開啟檔案
@@ -39,10 +47,21 @@ def index():
             return 'ignore'
 
         #如果是honeypotcontainer觸發的事件就不要管他
-        if str(data['output_fields']['container.name']) in ['castle-honeypot']:
-            # app.logger.info(str(data['output_fields']['container.name']))
-            app.logger.info('Event happened in honeypot application container, ignore it.')
-            return 'resolve'
+        #nien-yun
+        if ACTIVE_DYMANIC_HONEYPOT:
+            max_hoenypot = check_scale_max_number()
+            for i in range(1, max_hoenypot):
+                ignore_container = 'webshell_php5_demo_honeypot_' + str(i)
+
+                if str(data['output_fields']['container.name']) in [ignore_container]:
+                    # app.logger.info(str(data['output_fields']['container.name']))
+                    app.logger.info('Event happened in honeypot application container, ignore it.')
+                    return 'resolve'
+        else:
+            if str(data['output_fields']['container.name']) in ['castle-honeypot']:
+                # app.logger.info(str(data['output_fields']['container.name']))
+                app.logger.info('Event happened in honeypot application container, ignore it.')
+                return 'resolve'
 
         #解析Falco傳過來的資訊（process PID, 時間戳記, 出問題的container IP）
         falco_process_id = str(data['output_fields']['proc.ppid'])
@@ -95,9 +114,23 @@ def single_attacker_IP(attacker_ip_list):
 
 def add_ip_to_honeypot(ip_addr):
     global honeypot_ip_set
+    global ACTIVE_DYMANIC_HONEYPOT
+
     insert_ip(str(ip_addr)+'/32', 'honeypot')
+
+    #確認IP沒有重複之後才開啟scale的honeypot
+    check_ip_str = str(ip_addr) + "/32"
+    if check_ip_str not in honeypot_ip_set:
+        if ACTIVE_DYMANIC_HONEYPOT:
+            number = get_next_honeypot_number()
+            if number > 0:
+                insert_honeypot_to_nginx(number)
+                start_honeypot(number)
+    
     honeypot_ip_set.add(str(ip_addr)+"/32")
+    
     app.logger.info("新增Honeypot: "+str(ip_addr))
+
 
 
 def add_ip_to_isolate(ip_addr):
@@ -150,7 +183,6 @@ def search_from_nginx_log(falco_process_id, falco_time_stp, falco_container_ip):
     lines = nginx_log_fd.readlines()
     nginx_log_fd.close()
 
-    honeypot_ip = get_container_ip('castle-honeypot')
 
     real_ip_list = []
 
@@ -181,7 +213,7 @@ def search_from_nginx_log(falco_process_id, falco_time_stp, falco_container_ip):
             continue
 
 
-        if (upstream_ip != honeypot_ip) and (upstream_ip == falco_container_ip) and (source_ip not in real_ip_list) and time_in_range(msec_datetime - timedelta(seconds=upstream_response_time), msec_datetime, falco_time_stp):
+        if (upstream_ip == falco_container_ip) and (source_ip not in real_ip_list) and time_in_range(msec_datetime - timedelta(seconds=upstream_response_time), msec_datetime, falco_time_stp):
             app.logger.info(line)
             real_ip_list.append(source_ip)
 
@@ -197,6 +229,7 @@ def parse_nginx_conf():
     org_conf_fp.close()
 
     return org_conf
+
 
 def insert_ip(ip, value):
     global NGINX_CONF_PATH
@@ -259,9 +292,16 @@ def time_in_range(start, end, x):
 
 def get_container_ip(container_name):
     network_name = "webshell_php5_demo_castle-network"
-    container = docker_client.containers.get(container_name)
-    ip_add = container.attrs['NetworkSettings']['Networks'][network_name]['IPAddress']
-    return ip_add
+    
+    if check_container_exist(container_name):
+        container = docker_client.containers.get(container_name)
+        ip_add = container.attrs['NetworkSettings']['Networks'][network_name]['IPAddress']
+        return ip_add
+    else:
+        app.logger.info('cannot get container: ' + container_name)
+
+
+    
 
 def parse_ip_value_from_conf(ip_value):
     global NGINX_CONF_PATH
@@ -274,6 +314,120 @@ def parse_ip_value_from_conf(ip_value):
     
     return isolate_ip_set
 
+#檢查nginx設定黨裡面有沒有重複的honeypot server名稱
+def check_duplicated_honeypot(honeypot_list, new_honeypot_no):
+    for element in honeypot_list:
+        tempt = honeypot_container_regex.match( str(element[1]) )
+        if tempt:
+            temp = tempt.group(1)
+        else:
+            temp = 0
+
+        if int(temp) == int(new_honeypot_no):
+            app.logger.info("Duplicated honeypot number : " + str(new_honeypot_no))
+            return False
+    return True
+
+#將新增的honeypot server加入nginx設定檔,value是指scale後的container id後綴
+def insert_honeypot_to_nginx(value):
+    global NGINX_CONF_PATH
+    org_conf = parse_nginx_conf()
+
+    if check_duplicated_honeypot(org_conf[3][1], value):
+
+        insert_ip_element = ['\tserver\t', 'webshell_php5_demo_honeypot_' + str(value) + ':9000']
+        org_conf[3][1].append(insert_ip_element)
+        org_conf[3][1].append(['\n'])
+
+        fp = open(NGINX_CONF_PATH,"w")
+        fp.write(dumps(org_conf))
+        fp.close()
+    else:
+        app.logger.info("insert honeypot number " + str(value) + " duplicated")
+
+
+
+#檢查container是否存在,若不存在docker sdk會報錯
+def check_container_exist(conatiner_name):
+    container_list = docker_client.containers.list(all=True)
+    for container in container_list:
+        if str(container.name) == conatiner_name:
+            return True
+
+    return False
+
+#用docker ps -a來取得scale的最大值
+def check_scale_max_number():
+    max_num = 0
+    container_list = docker_client.containers.list(all=True)
+
+    for container in container_list:
+        re_result = honeypot_container_regex.match(str(container.name))
+
+        if re_result:
+            if int(max_num) < int(re_result.group(1)):
+                max_num = int(re_result.group(1))
+    
+    return max_num
+
+# initial時把scale多出來的honeypot容器暫停
+def stop_all_honeypot():
+    global honeypot_container_regex
+
+    for i in range(check_scale_max_number(), 1, -1):
+        stop_name = 'webshell_php5_demo_honeypot_' + str(i)
+        stop_container = docker_client.containers.get(stop_name)
+        if stop_container:
+            if str(stop_container.status) != 'stop':
+                stop_container.stop()
+            else:
+                app.logger.info(stop_name + " is already stop")
+            
+        else:
+            app.logger.info(stop_name + " container not found")
+
+#用docker ps來確定現在開到第幾個scale的honeypot,回傳下一個可用的scale number,若已經開到上限,則回傳-1
+def get_next_honeypot_number():
+    next_num = 0
+    container_list = docker_client.containers.list()
+
+    for container in container_list:
+        re_result = honeypot_container_regex.match(str(container.name))
+
+        if re_result:
+            if int(next_num) < int(re_result.group(1)):
+                next_num = int(re_result.group(1))
+    
+    if (next_num + 1) > check_scale_max_number():
+        app.logger.info("no more honeypot can start")
+        return -1
+    else:
+        return next_num + 1
+
+#使後綴是number的honeypot container start
+def start_honeypot(number):
+    start_name = 'webshell_php5_demo_honeypot_' + str(number)
+
+    if check_container_exist(start_name):
+        start_container = docker_client.containers.get(start_name)
+
+        if start_container:
+            if str(start_container.status) != 'running':
+                #maybe restart better?
+                start_container.start()
+            else:
+                app.logger.info(start_name + " is already running")
+    else:
+        app.logger.info("starting " + start_name + " container not found")
+
+# 將沒有開啟動態honeypot的所有scale container加入nginx
+def scale_honeypot_addto_nginx():
+    max_num = check_scale_max_number()
+
+    for i in range(2, max_num + 1):
+        insert_honeypot_to_nginx(i)
+
+
 @app.route('/show', methods=['GET']) 
 def show():
     global isolate_ip_set, honeypot_ip_set
@@ -283,6 +437,13 @@ if __name__ == '__main__':
 
     isolate_ip_set = parse_ip_value_from_conf("isolate")
     honeypot_ip_set = parse_ip_value_from_conf("honeypot")
+
+    if ACTIVE_DYMANIC_HONEYPOT:
+        app.logger.info("active?")
+        stop_all_honeypot()
+    else:
+        scale_honeypot_addto_nginx()
+
 
     app.debug = True
     app.run(host='0.0.0.0', threaded=True, port=5000)

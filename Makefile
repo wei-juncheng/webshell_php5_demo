@@ -1,10 +1,12 @@
 .DEFAULT_GOAL=build
 
 #記得要至少執行一次`make driver`安裝Falco的driver
+#docker-compose --env-file .docker-compose.env up -d --scale honeypot=??? --build
 build:
 	touch ./docker-compose/php-fpm/php-fpm.access.log
 	@$(MAKE) -s falco
-	docker-compose --env-file .docker-compose.env up -d --build app nginx falco_python honeypot app-lb app-lb2 isolation isolation2 isolation3
+	
+	docker-compose --env-file .docker-compose.env up -d --scale honeypot=3 --build app nginx falco_python honeypot app-lb app-lb2 isolation isolation2 isolation3
 	docker network connect webshell_php5_demo_castle-network falco_monitor
 
 network:
@@ -16,7 +18,9 @@ up:
 
 down:
 	docker rm -f falco_monitor
+	@$(MAKE) -s clear
 	docker-compose --env-file .docker-compose.env down
+	
 
 restart:
 	@$(MAKE) -s clear
