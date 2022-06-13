@@ -413,7 +413,6 @@ def start_honeypot(number):
 
         if start_container:
             if str(start_container.status) != 'running':
-                #maybe restart better?
                 start_container.start()
             else:
                 app.logger.info(start_name + " is already running")
@@ -439,7 +438,6 @@ if __name__ == '__main__':
     honeypot_ip_set = parse_ip_value_from_conf("honeypot")
 
     if ACTIVE_DYMANIC_HONEYPOT:
-        app.logger.info("active?")
         stop_all_honeypot()
     else:
         scale_honeypot_addto_nginx()
