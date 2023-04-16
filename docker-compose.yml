@@ -1,5 +1,6 @@
 version: '3.7'
 services:
+  #正常的網頁後端Container(PHP)
   app:
     image: php:5-fpm
     container_name: castle-app
@@ -7,14 +8,102 @@ services:
     environment:
       TZ: Asia/Taipei
     working_dir: /var/www/
+    pid: "host" #為了要讓Falco警告裡面的PID可以直接拿來檢查php-fpm的log，所以要讓他們在同一個PID namespace
     volumes:
       - ./:/var/www
+      # - ./docker-compose/php-fpm/www.conf:/usr/local/etc/php-fpm.d/www.conf
     networks:
       - castle-network
 
-  # Nginx for develop env (running on Desktop)
+  #正常的網頁後端Container(PHP)
+  app-lb:
+    image: php:5-fpm
+    container_name: castle-app-lb
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Taipei
+    working_dir: /var/www/
+    # pid: "host" #為了要讓Falco警告裡面的PID可以直接拿來檢查php-fpm的log，所以要讓他們在同一個PID namespace
+    volumes:
+      - ./:/var/www
+      # - ./docker-compose/php-fpm/www.conf:/usr/local/etc/php-fpm.d/www.conf
+    networks:
+      - castle-network
+      
+  #正常的網頁後端Container(PHP)
+  app-lb2:
+    image: php:5-fpm
+    container_name: castle-app-lb2
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Taipei
+    working_dir: /var/www/
+    # pid: "host" #為了要讓Falco警告裡面的PID可以直接拿來檢查php-fpm的log，所以要讓他們在同一個PID namespace
+    volumes:
+      - ./:/var/www
+      # - ./docker-compose/php-fpm/www.conf:/usr/local/etc/php-fpm.d/www.conf
+    networks:
+      - castle-network
+    
+  #假的網頁後端Container (Honeypot Container)
+  honeypot:
+    image: php:5-fpm
+    #container_name: castle-honeypot
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Taipei
+    working_dir: /var/www/
+    hostname: "This_Is_Honeypot_Container ^o^"
+    volumes:
+      - ./public/:/var/www/public/:ro #因為他是Honeypot，所以只給他public裡面的檔案，其他的機密檔案就不掛載進去了
+    networks:
+      - castle-network
+
+  # 隔離區Container
+  isolation:
+    image: php:5-fpm
+    container_name: castle-isolate
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Taipei
+    working_dir: /var/www/
+    hostname: "This_Is_Isolation_Container"
+    volumes:
+      - ./public/:/var/www/public/
+    networks:
+      - castle-network
+  
+  # 隔離區Container
+  isolation2:
+    image: php:5-fpm
+    container_name: castle-isolate2
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Taipei
+    working_dir: /var/www/
+    hostname: "This_Is_Isolation_Container_2"
+    volumes:
+      - ./public/:/var/www/public/
+    networks:
+      - castle-network
+  
+  # 隔離區Container
+  isolation3:
+    image: php:5-fpm
+    container_name: castle-isolate3
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Taipei
+    working_dir: /var/www/
+    hostname: "This_Is_Isolation_Container_3"
+    volumes:
+      - ./public/:/var/www/public/
+    networks:
+      - castle-network
+
+  # Nginx web server
   nginx:
-    image: nginx:1.21.1-alpine
+    image: nginx:1.21.6-alpine
     container_name: castle-nginx
     restart: unless-stopped
     ports:
@@ -29,6 +118,30 @@ services:
       - castle-network
     depends_on:
       - app
+  
+  falco_python:
+    build:
+      context: ./docker-compose/falco_python
+      dockerfile: Dockerfile.falco_python
+    container_name: falco_python
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Taipei
+    working_dir: /app/
+    volumes:
+      - ./docker-compose/falco_python:/app
+      - ./docker-compose/php-fpm:/php-fpm:ro #需要讀取php-fpm的設定檔
+      - ./docker-compose/nginx:/nginx #需要去修改Nginx的設定檔
+      - /var/run/docker.sock:/var/run/docker.sock #因為要在Container裡面使用Python的Docker套件，所以需要Docker Engine API掛載進去
+    networks:
+      - castle-network
+    ports:
+      - '8089:5000'
+    depends_on:
+      - nginx
+      - app
+      - honeypot
+      - isolation
 networks:
   castle-network:
     driver: bridge
